@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling==1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "prediccion-demanda-mariscos-xgboost"
+version = "0.1.0"
+description = "Predicción de demanda de mariscos con XGBoost, notebooks de análisis y API FastAPI"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "fastapi==0.115.0",
+  "uvicorn[standard]==0.30.6",
+  "pydantic==2.10.6",
+  "python-multipart==0.0.20",
+  "mlflow==3.14.0",
+  "pandas==2.3.3",
+  "numpy==2.5.1",
+  "scikit-learn==1.9.0",
+  "xgboost==3.3.0",
+  "joblib==1.5.3",
+  "pyarrow==24.0.0",
+  "matplotlib==3.11.0",
+  "seaborn==0.13.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff==0.6.9",
+  "pre-commit==4.0.1",
+  "nbconvert==7.16.4",
+  "ipykernel==6.29.5",
+]
+
+[project.scripts]
+api = "mariscos_api.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mariscos_api"]
+
+[tool.uv]
+package = true

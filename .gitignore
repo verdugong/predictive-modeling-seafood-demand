@@ -1,0 +1,26 @@
+# Entornos y caches
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# MLflow local
+mlruns/
+
+# Artefactos generados
+artefactos/*.png
+artefactos/*.svg
+artefactos/*.html
+artefactos/*.pdf
+
+# Si quieres versionar estos archivos para inferencia, deja explícitamente los permitidos
+!artefactos/.gitkeep
+!artefactos/config_modelo.json
+!artefactos/label_encoders.pkl
+!artefactos/dataset_procesado.csv
+
+# Suciedad común de editor y sistema
+.DS_Store
+Thumbs.db
