@@ -1,1 +1,1 @@
-"""API FastAPI para predicción de demanda de mariscos."""
+"""FastAPI application for seafood demand prediction."""
