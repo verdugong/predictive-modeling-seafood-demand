@@ -1,0 +1,349 @@
+"""Model loading, catalog preparation, and inference helpers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+from typing import Any, Dict, List, Sequence, Tuple
+
+import joblib
+import numpy as np
+import onnxruntime as ort
+import pandas as pd
+
+
+FEATURES: List[str] = [
+    "product_key_enc",
+    "sucursal_enc",
+    "mes_sin",
+    "mes_cos",
+    "dow_sin",
+    "dow_cos",
+    "fin_de_semana",
+    "festivo",
+    "vispera_festivo",
+    "demanda",
+    "n_tx",
+    "lag_1",
+    "lag_2",
+    "lag_7",
+    "lag_14",
+    "ma_7",
+    "ma_14",
+    "stock_inicial_dia",
+    "cobertura_dias",
+    "rotacion",
+    "media_dia_semana_hist",
+    "share_producto_suc",
+]
+
+
+FEATURE_LABELS = {
+    "product_key_enc": "codificación del producto",
+    "sucursal_enc": "codificación de la sucursal",
+    "share_producto_suc": "peso histórico del producto en la sucursal",
+    "ma_7": "media móvil de 7 días",
+    "ma_14": "media móvil de 14 días",
+    "stock_inicial_dia": "stock inicial del día",
+    "cobertura_dias": "cobertura de inventario",
+    "rotacion": "rotación de inventario",
+    "media_dia_semana_hist": "promedio histórico por día de semana",
+    "demanda": "demanda base del corte",
+    "n_tx": "número de transacciones",
+}
+
+
+@dataclass(slots=True)
+class AppState:
+    session: ort.InferenceSession
+    input_name: str
+    catalog: pd.DataFrame
+    product_encoder: Any
+    branch_encoder: Any
+    importance: Dict[str, float]
+    top_features: List[Tuple[str, float]]
+    product_options: List[Dict[str, str]]
+    branch_options: List[Dict[str, str]]
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _read_catalog() -> pd.DataFrame:
+    data_path = _project_root() / "dataset_forecasting_final.csv.gz"
+    if not data_path.exists():
+        raise FileNotFoundError(f"No se encontró el dataset en: {data_path}")
+
+    df = pd.read_csv(data_path, compression="gzip", low_memory=False)
+    if "fecha" not in df.columns:
+        raise ValueError("El dataset no contiene la columna 'fecha'.")
+
+    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
+    df = df.dropna(subset=["fecha"]).sort_values(["product_key", "sucursal", "fecha"])
+
+    numeric_candidates = [
+        "demanda",
+        "n_tx",
+        "lag_1",
+        "lag_2",
+        "lag_7",
+        "lag_14",
+        "ma_7",
+        "ma_14",
+        "stock_inicial_dia",
+        "cobertura_dias",
+        "rotacion",
+        "media_dia_semana_hist",
+        "share_producto_suc",
+        "mes_sin",
+        "mes_cos",
+        "dow_sin",
+        "dow_cos",
+        "fin_de_semana",
+        "festivo",
+        "vispera_festivo",
+    ]
+    for column in numeric_candidates:
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    return df
+
+
+def _latest_catalog(df: pd.DataFrame) -> pd.DataFrame:
+    grouped = df.groupby(["product_key", "sucursal"], as_index=False).last()
+    grouped["product_key"] = grouped["product_key"].astype(str)
+    grouped["sucursal"] = grouped["sucursal"].astype(str)
+    return grouped
+
+
+def _load_importance() -> Dict[str, float]:
+    importance_path = _project_root() / "artefactos" / "importancia_variables.json"
+    if not importance_path.exists():
+        raise FileNotFoundError(f"No se encontró el archivo de importancia en: {importance_path}")
+
+    import json
+
+    with importance_path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def load_state() -> AppState:
+    root = _project_root()
+    model_path = root / "artefactos" / "modelo_mariscos.onnx"
+    if not model_path.exists():
+        raise FileNotFoundError(f"No se encontró el modelo ONNX en: {model_path}")
+
+    encoders_path = root / "artefactos" / "label_encoders.pkl"
+    if not encoders_path.exists():
+        raise FileNotFoundError(f"No se encontró el archivo de encoders en: {encoders_path}")
+
+    catalog = _latest_catalog(_read_catalog())
+    encoders = joblib.load(encoders_path)
+    product_encoder = encoders["product_encoder"]
+    branch_encoder = encoders["branch_encoder"]
+
+    session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+    input_name = session.get_inputs()[0].name
+
+    importance = _load_importance()
+    top_features = sorted(importance.items(), key=lambda item: item[1], reverse=True)[:3]
+
+    product_options = []
+    product_labels = (
+        catalog[["product_key", "product_clean"]]
+        .drop_duplicates()
+        .sort_values(["product_clean", "product_key"], na_position="last")
+    )
+    for _, row in product_labels.iterrows():
+        product_key = str(row["product_key"])
+        product_clean = str(row.get("product_clean") or product_key)
+        product_options.append({"id": product_key, "label": f"{product_clean} ({product_key})"})
+
+    branch_options = [
+        {"id": branch, "label": branch}
+        for branch in sorted(catalog["sucursal"].astype(str).unique().tolist())
+    ]
+
+    return AppState(
+        session=session,
+        input_name=input_name,
+        catalog=catalog,
+        product_encoder=product_encoder,
+        branch_encoder=branch_encoder,
+        importance=importance,
+        top_features=top_features,
+        product_options=product_options,
+        branch_options=branch_options,
+    )
+
+
+def build_date_list(raw_dates: Sequence[str]) -> List[date]:
+    dates = []
+    for raw in raw_dates:
+        parsed = pd.to_datetime(raw, errors="coerce")
+        if pd.isna(parsed):
+            raise ValueError(f"Fecha inválida: {raw}")
+        dates.append(parsed.date())
+    return dates
+
+
+def _row_value(row: pd.Series, key: str, default: float = 0.0) -> float:
+    value = row.get(key, default)
+    if pd.isna(value):
+        return float(default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _feature_row(base_row: pd.Series, product_key: str, branch: str, current_date: date, festivo: int, vispera: int) -> Dict[str, float]:
+    current_ts = pd.Timestamp(current_date)
+    base_demand = _row_value(base_row, "demanda")
+
+    return {
+        "product_key_enc": float(base_row["product_key_enc"]),
+        "sucursal_enc": float(base_row["sucursal_enc"]),
+        "mes_sin": float(np.sin(2 * np.pi * current_ts.month / 12)),
+        "mes_cos": float(np.cos(2 * np.pi * current_ts.month / 12)),
+        "dow_sin": float(np.sin(2 * np.pi * current_ts.dayofweek / 7)),
+        "dow_cos": float(np.cos(2 * np.pi * current_ts.dayofweek / 7)),
+        "fin_de_semana": float(int(current_ts.dayofweek >= 5)),
+        "festivo": float(festivo),
+        "vispera_festivo": float(vispera),
+        "demanda": base_demand,
+        "n_tx": _row_value(base_row, "n_tx"),
+        "lag_1": _row_value(base_row, "lag_1", base_demand),
+        "lag_2": _row_value(base_row, "lag_2", _row_value(base_row, "lag_1", base_demand)),
+        "lag_7": _row_value(base_row, "lag_7", base_demand),
+        "lag_14": _row_value(base_row, "lag_14", base_demand),
+        "ma_7": _row_value(base_row, "ma_7", base_demand),
+        "ma_14": _row_value(base_row, "ma_14", base_demand),
+        "stock_inicial_dia": _row_value(base_row, "stock_inicial_dia"),
+        "cobertura_dias": _row_value(base_row, "cobertura_dias"),
+        "rotacion": _row_value(base_row, "rotacion"),
+        "media_dia_semana_hist": _row_value(base_row, "media_dia_semana_hist"),
+        "share_producto_suc": _row_value(base_row, "share_producto_suc"),
+    }
+
+
+def _predict_from_row(state: AppState, feature_row: Dict[str, float]) -> float:
+    ordered = [feature_row.get(feature, 0.0) for feature in FEATURES]
+    input_array = np.asarray([ordered], dtype=np.float32)
+    output = state.session.run(None, {state.input_name: input_array})[0]
+    predicted = float(np.asarray(output).reshape(-1)[0])
+    return max(0.0, round(predicted, 2))
+
+
+def _explain_prediction(state: AppState, feature_row: Dict[str, float], prediction: float) -> str:
+    fragments: List[str] = []
+    for feature_name, score in state.top_features:
+        label = FEATURE_LABELS.get(feature_name, feature_name)
+        value = feature_row.get(feature_name, 0.0)
+        fragments.append(f"{label}={value:.3f}")
+
+    return (
+        f"Predicción 30d: {prediction:.2f} unidades. "
+        f"Las variables globales más influyentes fueron {', '.join(fragments)}. "
+        f"La lectura local del corte refuerza este escenario para la combinación analizada."
+    )
+
+
+def predict_series(
+    state: AppState,
+    productos: Sequence[str],
+    sucursales: Sequence[str],
+    fechas: Sequence[str],
+    festivo: int,
+    vispera_festivo: int,
+) -> List[Dict[str, object]]:
+    normalized_dates = build_date_list(fechas)
+    unique_dates = list(dict.fromkeys(normalized_dates))
+
+    results: List[Dict[str, object]] = []
+    missing_combos: List[str] = []
+    valid_products = set(state.catalog["product_key"].astype(str).unique())
+    valid_branches = set(state.catalog["sucursal"].astype(str).unique())
+
+    for product_key in productos:
+        product_key = str(product_key)
+        if product_key not in valid_products:
+            missing_combos.append(f"producto inexistente: {product_key}")
+            continue
+
+        for branch in sucursales:
+            branch = str(branch)
+            if branch not in valid_branches:
+                missing_combos.append(f"sucursal inexistente: {branch}")
+                continue
+
+            mask = (state.catalog["product_key"].astype(str) == product_key) & (state.catalog["sucursal"].astype(str) == branch)
+            if not mask.any():
+                missing_combos.append(f"combinación no disponible: {product_key} × {branch}")
+                continue
+
+            base_row = state.catalog.loc[mask].iloc[-1].copy()
+            base_row["product_key_enc"] = state.product_encoder.transform([product_key])[0]
+            base_row["sucursal_enc"] = state.branch_encoder.transform([branch])[0]
+
+            lag1 = _row_value(base_row, "lag_1")
+            lag2 = _row_value(base_row, "lag_2")
+            buf_ma7 = [float(base_row.get(f"lag_{i}", 0)) for i in range(7, 1, -1)]
+            buf_ma14 = [float(base_row.get(f"lag_{i}", 0)) for i in range(14, 1, -1)]
+
+            for current_date in unique_dates:
+                feature_row = {
+                    "product_key_enc": float(base_row["product_key_enc"]),
+                    "sucursal_enc": float(base_row["sucursal_enc"]),
+                    "mes_sin": float(np.sin(2 * np.pi * pd.Timestamp(current_date).month / 12)),
+                    "mes_cos": float(np.cos(2 * np.pi * pd.Timestamp(current_date).month / 12)),
+                    "dow_sin": float(np.sin(2 * np.pi * pd.Timestamp(current_date).dayofweek / 7)),
+                    "dow_cos": float(np.cos(2 * np.pi * pd.Timestamp(current_date).dayofweek / 7)),
+                    "fin_de_semana": float(int(pd.Timestamp(current_date).dayofweek >= 5)),
+                    "festivo": float(festivo),
+                    "vispera_festivo": float(vispera_festivo),
+                    "demanda": _row_value(base_row, "demanda"),
+                    "n_tx": _row_value(base_row, "n_tx"),
+                    "lag_1": lag1,
+                    "lag_2": lag2,
+                    "lag_7": buf_ma7[-1],
+                    "lag_14": buf_ma14[-1],
+                    "ma_7": float(np.mean(buf_ma7)),
+                    "ma_14": float(np.mean(buf_ma14)),
+                    "stock_inicial_dia": _row_value(base_row, "stock_inicial_dia"),
+                    "cobertura_dias": _row_value(base_row, "cobertura_dias"),
+                    "rotacion": _row_value(base_row, "rotacion"),
+                    "media_dia_semana_hist": _row_value(base_row, "media_dia_semana_hist"),
+                    "share_producto_suc": _row_value(base_row, "share_producto_suc"),
+                }
+                prediction = _predict_from_row(state, feature_row)
+                explanation = _explain_prediction(state, feature_row, prediction)
+
+                results.append(
+                    {
+                        "producto": product_key,
+                        "sucursal": branch,
+                        "fecha": current_date.isoformat(),
+                        "unidades_estimadas_30d": prediction,
+                        "justificacion_inventario": explanation,
+                    }
+                )
+
+                lag2 = lag1
+                lag1 = prediction
+                buf_ma7.append(prediction)
+                buf_ma7.pop(0)
+                buf_ma14.append(prediction)
+                buf_ma14.pop(0)
+
+                base_row["demanda"] = prediction
+                base_row["lag_1"] = lag1
+                base_row["lag_2"] = lag2
+
+    if missing_combos:
+        raise ValueError("; ".join(dict.fromkeys(missing_combos)))
+
+    return results
