@@ -113,7 +113,7 @@ Diego Bravo Email: brzoale2510@gmail.com GitHub: github.com/diegobravo10
 
 Sebastián Machado Email: salejomac1210@gmail.com GitHub: github.com/SMachadoP
 
-Sebastian Verdugo Email: @gmail.com GitHub: github.com/verdugong
+Sebastian Verdugo Email: @sebastianvccvgmail.com GitHub: github.com/verdugong
 
 Ariel Paltán Email: arielpaltan203@hotmail.com GitHub: github.com/ArielPaltanC
 
