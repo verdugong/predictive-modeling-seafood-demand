@@ -2,7 +2,7 @@
 
 import type { Horizonte, OptionItem, PredictionRow } from "@/lib/api";
 import { horizonteBadge, totalDemandByUnit } from "@/lib/predict";
-import { DemandSummary } from "@/components/DemandSummary";
+import { totalSubtotales } from "@/lib/prices";
 import { PredictionTable } from "@/components/PredictionTable";
 
 function ReportStat({ label, value }: { label: string; value: string }) {
@@ -33,6 +33,14 @@ export function ReportModal({
 }) {
   const generatedAt = new Date().toLocaleString("es-EC", { dateStyle: "long", timeStyle: "short" });
   const total = totalDemandByUnit(rows, products);
+  const totalUSD = totalSubtotales(rows);
+  const fechaInicio = rows.length > 0 ? rows[0].fecha : null;
+  const diasHorizonte = horizonte === "mensual" ? 28 : 7;
+  const fechaFin = fechaInicio ? (() => {
+    const d = new Date(fechaInicio);
+    d.setDate(d.getDate() + diasHorizonte - 1);
+    return d.toISOString().split("T")[0];
+  })() : null;
 
   if (!open) {
     return null;
@@ -69,6 +77,14 @@ export function ReportModal({
           <div className="space-y-1">
             <h1 className="font-display text-2xl font-semibold text-brand-ink">Reporte de predicción de inventario</h1>
             <p className="text-sm text-brand-muted print:text-slate-600">Generado el {generatedAt}</p>
+            {fechaInicio && fechaFin && (
+              <p className="text-sm font-semibold text-brand-ink print:text-slate-900 mt-1">
+                Predicción: {fechaInicio} hasta {fechaFin}
+              </p>
+            )}
+            <p className="text-lg font-bold text-brand-tealDeep print:text-slate-900 mt-2">
+              Total estimado: ${totalUSD.toFixed(2)} USD
+            </p>
           </div>
 
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -82,14 +98,10 @@ export function ReportModal({
             />
           </dl>
 
-          {/* Top 10, por sucursal y por categoría — separados por lb/unidades — viven en DemandSummary
-              y se muestran ambos grupos al imprimir, así que no se duplican aquí. */}
-          <DemandSummary rows={rows} products={products} branches={branches} horizonte={horizonte} />
-
           <div>
             <h2 className="font-display text-lg font-semibold text-brand-ink">Tabla de resultados</h2>
             <div className="mt-3">
-              <PredictionTable rows={rows} products={products} horizonte={horizonte} paginate={false} />
+              <PredictionTable rows={rows} products={products} horizonte={horizonte} paginate={false} reportMode />
             </div>
           </div>
         </div>

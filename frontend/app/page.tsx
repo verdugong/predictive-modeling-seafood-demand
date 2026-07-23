@@ -145,44 +145,51 @@ export default function Page() {
     <main className="relative min-h-screen overflow-hidden px-4 py-8 text-brand-text sm:px-6 lg:px-10 print:overflow-visible print:bg-white print:px-0 print:py-0">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-6 print:hidden">
         <header className="glass-panel relative overflow-hidden rounded-[2rem] p-6 shadow-card sm:p-8">
-          <div className="relative max-w-3xl space-y-4">
-            <p className="text-sm font-semibold uppercase tracking-[0.45em] text-brand-teal">
-              Distribuidora de mariscos
-            </p>
-            <h1 className="font-display text-3xl font-semibold tracking-tight text-brand-ink sm:text-5xl">
-              Planificación de demanda de mariscos
-            </h1>
-            <p className="max-w-2xl text-sm leading-6 text-brand-muted sm:text-base">
-              Anticipa las ventas de los próximos días y organiza el inventario de cada sucursal.
-            </p>
+          <div className="relative flex items-start justify-between">
+            <div className="relative max-w-3xl space-y-4">
+              <p className="text-sm font-semibold uppercase tracking-[0.45em] text-brand-teal">
+                Distribuidora de mariscos
+              </p>
+              <h1 className="font-display text-3xl font-semibold tracking-tight text-brand-ink sm:text-5xl">
+                Planificación de demanda de mariscos
+              </h1>
+              <p className="max-w-2xl text-sm leading-6 text-brand-muted sm:text-base">
+                Anticipa las ventas de los próximos días y organiza el inventario de cada sucursal.
+              </p>
 
-            <div className="flex flex-wrap gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={submitting || optionsState !== "ready"}
-                className="inline-flex items-center justify-center rounded-full bg-brand-coral px-6 py-3 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(255,107,75,0.32)] transition hover:-translate-y-0.5 hover:bg-brand-coralDeep disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
-              >
-                {submitting ? "Calculando..." : "Generar predicción"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterOpen(true)}
-                disabled={optionsState !== "ready"}
-                className="inline-flex items-center justify-center rounded-full border border-brand-lineStrong bg-white px-6 py-3 text-sm font-semibold text-brand-text transition hover:border-brand-teal hover:bg-brand-tealSoft hover:text-brand-tealDeep disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Filtrar
-              </button>
-              <button
-                type="button"
-                onClick={() => setReportOpen(true)}
-                disabled={rows.length === 0}
-                title={rows.length === 0 ? "Genera una predicción primero" : undefined}
-                className="inline-flex items-center justify-center rounded-full border border-brand-lineStrong bg-white px-6 py-3 text-sm font-semibold text-brand-text transition hover:border-brand-teal hover:bg-brand-tealSoft hover:text-brand-tealDeep disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Generar reporte
-              </button>
+              <div className="flex flex-wrap gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={submitting || optionsState !== "ready"}
+                  className="inline-flex items-center justify-center rounded-full bg-brand-coral px-6 py-3 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(255,107,75,0.32)] transition hover:-translate-y-0.5 hover:bg-brand-coralDeep disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
+                >
+                  {submitting ? "Calculando..." : "Generar predicción"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterOpen(true)}
+                  disabled={optionsState !== "ready"}
+                  className="inline-flex items-center justify-center rounded-full border border-brand-lineStrong bg-white px-6 py-3 text-sm font-semibold text-brand-text transition hover:border-brand-teal hover:bg-brand-tealSoft hover:text-brand-tealDeep disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Filtrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReportOpen(true)}
+                  disabled={rows.length === 0}
+                  title={rows.length === 0 ? "Genera una predicción primero" : undefined}
+                  className="inline-flex items-center justify-center rounded-full border border-brand-lineStrong bg-white px-6 py-3 text-sm font-semibold text-brand-text transition hover:border-brand-teal hover:bg-brand-tealSoft hover:text-brand-tealDeep disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Generar reporte
+                </button>
+              </div>
             </div>
+            <img
+              src="/logo.jpeg"
+              alt="Logo"
+              className="h-24 w-24 shrink-0 object-contain sm:h-32 sm:w-32"
+            />
           </div>
         </header>
 

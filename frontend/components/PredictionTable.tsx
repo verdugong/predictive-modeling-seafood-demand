@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Horizonte, OptionItem, PredictionRow } from "@/lib/api";
 import { formatDemanda, horizonteCorto, unidadDeProducto } from "@/lib/predict";
+import { subtotalFila } from "@/lib/prices";
 import { LimeExplainModal, type LimeExplainTarget } from "@/components/LimeExplainModal";
 
 const PAGE_SIZE = 15;
@@ -13,12 +14,15 @@ export function PredictionTable({
   products,
   horizonte,
   paginate = true,
+  reportMode = false,
 }: {
   rows: PredictionRow[];
   products: OptionItem[];
   horizonte: Horizonte;
   /** Set to false to render every row at once (used by the printable report). */
   paginate?: boolean;
+  /** When true, shows simplified columns for the report (Producto, Sucursal, Demanda, Subtotal). */
+  reportMode?: boolean;
 }) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
@@ -47,6 +51,8 @@ export function PredictionTable({
     setPage(1);
   }
 
+  const colCount = reportMode ? 4 : 5;
+
   return (
     <div>
       <div className="overflow-x-auto rounded-2xl border border-brand-line print:overflow-visible print:rounded-none print:border-slate-300">
@@ -55,7 +61,9 @@ export function PredictionTable({
             <tr>
               <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">Producto</th>
               <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">Sucursal</th>
-              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">Fecha</th>
+              {!reportMode && (
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">Fecha</th>
+              )}
               <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">
                 <button
                   type="button"
@@ -66,7 +74,11 @@ export function PredictionTable({
                   <span aria-hidden="true">{sortDir === "asc" ? "▲" : "▼"}</span>
                 </button>
               </th>
-              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">¿Por qué esta predicción?</th>
+              {reportMode ? (
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-right">Subtotal (USD)</th>
+              ) : (
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">¿Por qué esta predicción?</th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-line bg-brand-card print:bg-white">
@@ -82,39 +94,49 @@ export function PredictionTable({
                   >
                     <td className="px-4 py-4 print:text-slate-900">
                       <p className="font-semibold text-brand-ink print:text-slate-900">{productoLabel}</p>
-                      <p className="mt-0.5 text-xs text-brand-faint print:text-brand-muted">
-                        {row.producto}
-                        {catalogEntry?.presentation ? ` · ${catalogEntry.presentation}` : ""}
-                      </p>
+                      {!reportMode && (
+                        <p className="mt-0.5 text-xs text-brand-faint print:text-brand-muted">
+                          {row.producto}
+                          {catalogEntry?.presentation ? ` · ${catalogEntry.presentation}` : ""}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-4 text-brand-muted print:text-slate-700">{row.sucursal}</td>
-                    <td className="px-4 py-4 text-brand-muted print:text-slate-700">{row.fecha}</td>
+                    {!reportMode && (
+                      <td className="px-4 py-4 text-brand-muted print:text-slate-700">{row.fecha}</td>
+                    )}
                     <td className="px-4 py-4 font-bold tabular-nums text-brand-teal print:text-slate-900">
                       {formatDemanda(row.unidades_estimadas_7d, unidad)}
                     </td>
-                    <td className="px-4 py-4 print:text-slate-700">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExplainTarget({
-                            producto: row.producto,
-                            productoLabel,
-                            sucursal: row.sucursal,
-                            fecha: row.fecha,
-                            horizonte: row.horizonte,
-                          })
-                        }
-                        className="rounded-full border border-brand-lineStrong bg-white px-3.5 py-1.5 text-xs font-semibold text-brand-tealDeep transition hover:border-brand-teal hover:bg-brand-tealSoft print:hidden"
-                      >
-                        Ver explicación
-                      </button>
-                    </td>
+                    {reportMode ? (
+                      <td className="px-4 py-4 text-right font-semibold tabular-nums text-brand-ink print:text-slate-900">
+                        ${subtotalFila(row.producto, row.unidades_estimadas_7d).toFixed(2)}
+                      </td>
+                    ) : (
+                      <td className="px-4 py-4 print:text-slate-700">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExplainTarget({
+                              producto: row.producto,
+                              productoLabel,
+                              sucursal: row.sucursal,
+                              fecha: row.fecha,
+                              horizonte: row.horizonte,
+                            })
+                          }
+                          className="rounded-full border border-brand-lineStrong bg-white px-3.5 py-1.5 text-xs font-semibold text-brand-tealDeep transition hover:border-brand-teal hover:bg-brand-tealSoft print:hidden"
+                        >
+                          Ver explicación
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-brand-muted">
+                <td colSpan={colCount} className="px-4 py-10 text-center text-brand-muted">
                   Genera una predicción para ver los resultados aquí.
                 </td>
               </tr>
